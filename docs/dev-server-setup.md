@@ -33,23 +33,25 @@ cd /data/<你的用户名>/GPT-SoVITS-Pro
 bash scripts/check_server_env.sh
 ```
 
-重点看三行：HuggingFace 连通性（预期超时）、`/data` 剩余空间（安装约需 15~20G 富余）、`nvidia-smi` 里两张卡各自的占用。
+重点看四处：**登录 Shell 类型**（决定环境变量写进哪个 rc 文件，见下）、HuggingFace 连通性（预期超时）、`/data` 剩余空间（安装约需 15~20G 富余）、`nvidia-smi` 里两张卡各自的占用。
 
-体检脚本**不检查 conda**，单独确认一次：
+脚本的「Conda 环境/包管理器 conda (仅信息)」一节会报告 conda 现状（仅信息，不影响 exit code）：
 
-```bash
-command -v conda && conda --version
-```
+- 有 `conda --version` 输出 → 已装好，跳到第 2 步。
+- 显示 `MISSING: 未安装 conda` → 按下面装 Miniconda 到数据盘（避免占系统盘）。
 
-有输出即可跳到第 2 步。若为空，安装 Miniconda 到数据盘（避免占系统盘）：
+> **先看脚本报出的「登录 Shell」再选命令**：`bash` 用 `~/.bashrc` + `conda init bash`；`zsh` 用 `~/.zshrc` + `conda init zsh`。下面以 bash 为例，zsh 用户把两处 `bash` 换成 `zsh`。
 
 ```bash
 cd /data/<你的用户名>
 curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh -o miniconda.sh
 bash miniconda.sh -b -p /data/<你的用户名>/miniconda3
-/data/<你的用户名>/miniconda3/bin/conda init bash
-exec bash   # 重载 shell，使 conda 生效
+rm /data/<你的用户名>/miniconda.sh
+/data/<你的用户名>/miniconda3/bin/conda init bash   # zsh 用户改为 conda init zsh
+exec bash                                           # zsh 用户改为 exec zsh；重载使 conda 生效
 ```
+
+装完可再跑一次 `bash scripts/check_server_env.sh`，确认 conda 一节已显示版本与路径。
 
 ## 第 2 步：把缓存重定向到数据盘
 
@@ -61,6 +63,7 @@ conda config --add envs_dirs /data/<你的用户名>/conda/envs
 conda config --add pkgs_dirs /data/<你的用户名>/conda/pkgs
 
 # pip 与 HuggingFace 缓存放数据盘（写进 shell 配置，长期生效）
+# 注意：zsh 用户把下面三处 ~/.bashrc 换成 ~/.zshrc（以第 1 步脚本报出的登录 Shell 为准）
 echo 'export PIP_CACHE_DIR=/data/<你的用户名>/.cache/pip'  >> ~/.bashrc
 echo 'export HF_HOME=/data/<你的用户名>/.cache/huggingface' >> ~/.bashrc
 source ~/.bashrc
@@ -121,5 +124,5 @@ CUDA_VISIBLE_DEVICES=0 python GPT_SoVITS/inference_webui.py
 ## 维护
 
 - 本文只覆盖「这类国内 GPU 服务器」的部署。跨平台通用安装仍以 [快速上手](quickstart.md) 为准；两者出现冲突时，以本文的服务器约束为准。
-- 体检脚本 `scripts/check_server_env.sh` 若新增检查项（如 conda、磁盘阈值），同步更新本文第 1 步。
+- 体检脚本 `scripts/check_server_env.sh` 现已报告 conda（仅信息）与登录 Shell 类型；若其检查项再变化（如磁盘阈值、conda 改为必要依赖），同步更新本文第 1 步。
 - 若默认设备版本、镜像源选项或 `install.sh` 参数变化，同步更新第 3 步。
