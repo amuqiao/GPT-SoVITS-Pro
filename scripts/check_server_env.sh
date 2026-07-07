@@ -17,8 +17,8 @@ Options / 选项:
   -h, --help   显示本帮助并退出。
 
 检查范围(固定,不随项目膨胀):
-  OS / 架构、CPU / 内存 / 磁盘、GPU(Linux CUDA / macOS Metal-MPS)、
-  FFmpeg、Python、pip 或 uv、git、curl、docker(仅信息)、网络连通性。
+  OS / 架构、登录 Shell 类型、CPU / 内存 / 磁盘、GPU(Linux CUDA / macOS Metal-MPS)、
+  FFmpeg、Python、pip 或 uv、conda(仅信息)、git、curl、docker(仅信息)、网络连通性。
 
 不负责:
   不读取项目 pyproject.toml / requirements、不逐一验证 pip 依赖、
@@ -90,6 +90,21 @@ detect_os() {
     Linux) echo linux ;;
     Darwin) echo macos ;;
     *) echo other ;;
+  esac
+}
+
+# 识别用户登录 shell 类型,便于判断环境变量该写进哪个 rc 文件。
+# 以 $SHELL(登录 shell)为准,而非脚本自身的运行 shell。
+detect_shell() {
+  local sh_path="${SHELL:-}"
+  local sh_base
+  sh_base="$(basename "$sh_path" 2>/dev/null || echo)"
+  case "$sh_base" in
+    bash) echo bash ;;
+    zsh) echo zsh ;;
+    fish) echo fish ;;
+    "") echo UNKNOWN ;;
+    *) echo "other ($sh_base)" ;;
   esac
 }
 
@@ -224,6 +239,8 @@ section "SUMMARY"
 print_kv "生成时间 Generated at" "$(date '+%Y-%m-%d %H:%M:%S %Z' 2>/dev/null || date)"
 print_kv "主机名 Hostname" "$(hostname 2>/dev/null || printf 'UNKNOWN')"
 print_kv "当前用户 User" "$(id -un 2>/dev/null || whoami 2>/dev/null || printf 'UNKNOWN')"
+print_kv "登录 Shell Login shell" "$(detect_shell)"
+print_kv "Shell 路径 Shell path" "${SHELL:-UNKNOWN}"
 print_kv "平台 Platform" "${OS_KIND}"
 print_kv "架构 Arch" "$(uname -m 2>/dev/null || printf 'UNKNOWN')"
 print_kv "包管理器 Pkg manager" "${PKG_MGR}"
@@ -315,6 +332,18 @@ else
 fi
 if [ "$have_pkg" -eq 0 ]; then
   note_missing "Python 包管理器 (pip / uv)" "$(install_hint uv)"
+fi
+
+# Conda 环境/包管理器:仅信息,不计入缺失、不影响 exit code。
+# 某些项目(如 conda-based 安装脚本)需要它,但本脚本保持项目无关,只报告现状。
+printf '\n# Conda 环境/包管理器 conda (仅信息)\n'
+if command -v conda >/dev/null 2>&1; then
+  printf '$ conda --version\n'; conda --version 2>&1 | head -n 1 || true
+  printf '$ command -v conda\n'; command -v conda 2>&1 | head -n 1 || true
+  [ -n "${CONDA_PREFIX:-}" ] && print_kv "当前环境 CONDA_PREFIX" "${CONDA_PREFIX}" || true
+else
+  printf 'MISSING: 未安装 conda(仅信息,不计入缺失)\n'
+  printf '含义 Meaning: 若项目安装脚本依赖 conda,需先安装;否则可忽略。\n'
 fi
 
 section "容器工具 CONTAINER (仅信息)"
