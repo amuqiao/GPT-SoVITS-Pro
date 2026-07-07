@@ -1,143 +1,307 @@
-# 快速上手：从安装到跑通第一条语音
+# 快速上手：从 0 跑通第一条零样本语音
 
-本文带你在本地把 GPT-SoVITS-Pro 跑起来，并合成出第一条克隆语音。目标是**最短路径跑通**，不追求覆盖全部功能。
+本文带你从一台空环境开始，启动 GPT-SoVITS-Pro 的推理网页，并用一段参考音频合成第一条语音。
 
-## 文档职责
+## 这篇文档带你完成什么
 
-- 负责：环境安装、模型下载、启动 WebUI、跑通一次**零样本（zero-shot）**推理，并指出下一步（微调、API、CLI）该去哪。
-- 不负责：模型原理、目录职责、二次开发。想理解"它为什么这样工作、我该改哪里"，读 [项目讲解](architecture.md)；想快速定位入口文件，读 [项目地图](project-map.md)。
-- 适用读者：想用它做语音合成 / 声音克隆的新用户，具备基本命令行和 conda 使用能力。
-
-## 先理解一件事：你不一定需要训练
-
-这是最容易走弯路的地方。先看清两条路的边界，再决定跑哪条：
+完成后你应该得到三个结果：
 
 ```text
-零样本 zero-shot ── 只给 5 秒参考音频 ──> 直接合成，无需训练
-   适用：随手克隆一个音色、快速验证效果
-   需要：只装环境 + 下载底模
-
-少样本 few-shot ── 用 ~1 分钟数据微调 ──> 音色更像、更稳
-   适用：认真做一个专属音色
-   需要：环境 + 底模 + 一整套数据准备与训练流程
+环境可用 -> 浏览器能打开推理页 -> 听到第一条合成语音
 ```
 
-**本文只跑通零样本这条路**，它足以让你听到效果。微调路径在文末给出入口。
+本文只走**零样本推理**：不训练模型，只用底模和一段 3~10 秒参考音频直接合成。它适合第一次验证项目能不能跑通，也适合快速试一个音色。少样本微调、批量制作数据集、API 接入和二次开发不放在本文里。
 
-整条零样本链路可以先建立这样一个心智画面：
+## 先建立心智模型：第一条语音由四件事组成
+
+不要一开始就找训练按钮。第一次跑通时，你只需要让推理页同时拿到四类输入：
 
 ```text
-参考音频(5~10s) + 要合成的文本
+1. GPT 底模        -> 负责把文字变成语义
+2. SoVITS 底模     -> 负责把语义和音色变成声音
+3. 参考音频 + 文本  -> 告诉模型“像谁说话”
+4. 目标文本 + 语种  -> 告诉模型“要说什么”
+```
+
+网页里的合成链路可以这样理解：
+
+```text
+参考音频(3~10 秒) + 参考音频对应文字
         │
+        ├── 锚定音色、语气和发音特征
+        │
+目标文本 + 目标语种
+        │
+        ├── 决定这次要生成的内容
         ▼
-   推理 WebUI (端口 9872)
-        │  GPT 底模：文本 → 语义
-        │  SoVITS 底模：语义 + 参考音色 → 波形
-        ▼
-   合成音频（下载 / 试听）
+推理 WebUI(9872) -> 合成语音 -> 试听 / 下载
 ```
 
-## 第 1 步：确认环境
+零样本不需要训练集、不需要 `logs/` 实验目录，也不会生成新的 GPT / SoVITS 权重。
 
-推荐组合（其余组合见 [README 的 Tested Environments](../README.md)）：
+## 第 0 步：确认你在哪里运行
+
+先进入项目根目录：
+
+```bash
+cd /Users/admin/Downloads/GPT-SoVITS-Pro
+```
+
+如果项目运行在远程开发服务器，本地浏览器不能直接访问服务器的 `localhost`。你需要在本地开 SSH 端口转发：
+
+```bash
+ssh -N -L 9872:localhost:9872 <user>@<server-ip>
+```
+
+然后在本地浏览器访问：
 
 ```text
-Python 3.10  +  PyTorch 2.5.1  +  CUDA 12.4（N 卡）
-Python 3.10  +  PyTorch 2.5.1  +  Apple silicon（Mac 用 MPS 或 CPU）
+http://127.0.0.1:9872/
 ```
 
-> Windows 用户可选更省事的路径：下载官方**整合包**，双击 `go-webui.bat` 即可，跳过下面的安装步骤。整合包地址见 [README](../README.md#windows)。
->
-> 部署到国内 GPU 开发服务器（HuggingFace 不通、系统盘小、多人共用）？先看 [开发服务器环境搭建](dev-server-setup.md)——镜像源、磁盘布局、选卡这些服务器特有约束本文不展开。
+`0.0.0.0` 是服务监听地址，不建议作为浏览器访问地址。浏览器侧优先用 `127.0.0.1` 或 `localhost`。
 
-## 第 2 步：安装
+如果你想从总控 WebUI 打开推理页，还需要同时转发总控端口：
 
-先建 conda 环境，再按平台运行安装脚本。安装脚本会**自动下载底模**，装成功即可跳过第 3 步。
+```bash
+ssh -N -L 9874:localhost:9874 -L 9872:localhost:9872 <user>@<server-ip>
+```
+
+## 第 1 步：创建 Python 环境
+
+推荐使用 Python 3.10：
 
 ```bash
 conda create -n GPTSoVits python=3.10
 conda activate GPTSoVits
 ```
 
-| 平台 | 命令 |
+确认 Python 指向当前环境：
+
+```bash
+python --version
+```
+
+## 第 2 步：安装依赖和底模
+
+按你的系统选择一个命令。安装脚本会安装依赖，并下载主底模和中文 G2PW 模型。
+
+Linux：
+
+```bash
+bash install.sh --device <CU126|CU128|ROCM|CPU> --source <HF|HF-Mirror|ModelScope>
+```
+
+macOS：
+
+```bash
+bash install.sh --device <MPS|CPU> --source <HF|HF-Mirror|ModelScope>
+```
+
+Windows PowerShell：
+
+```pwsh
+pwsh -F install.ps1 --Device <CU126|CU128|CPU> --Source <HF|HF-Mirror|ModelScope>
+```
+
+参数怎么选：
+
+| 参数 | 什么时候选 |
 | --- | --- |
-| Linux | `bash install.sh --device <CU126\|CU128\|ROCM\|CPU> --source <HF\|HF-Mirror\|ModelScope> [--download-uvr5]` |
-| macOS | `bash install.sh --device <MPS\|CPU> --source <HF\|HF-Mirror\|ModelScope> [--download-uvr5]` |
-| Windows | `pwsh -F install.ps1 --Device <CU126\|CU128\|CPU> --Source <HF\|HF-Mirror\|ModelScope> [--DownloadUVR5]` |
+| `CU126` / `CU128` | NVIDIA GPU，CUDA 版本匹配对应 PyTorch wheel |
+| `ROCM` | AMD GPU 的 ROCm 环境 |
+| `MPS` | Apple silicon Mac |
+| `CPU` | 没有可用 GPU，或只想先跑通 |
+| `HF` | 能稳定访问 Hugging Face |
+| `HF-Mirror` | 国内网络优先尝试 |
+| `ModelScope` | 国内网络优先尝试 |
 
-参数说明：
+本文不需要 UVR5，所以先不要加 `--download-uvr5` / `--DownloadUVR5`。UVR5 是做歌曲人声分离、微调素材清洗时才用的。
 
-- `--source`：模型下载源。国内网络优先 `HF-Mirror` 或 `ModelScope`。
-- `--download-uvr5`（可选）：额外下载人声分离模型，**只有做微调、需要从歌曲里剥人声时才需要**，跑零样本可以不加。
+再安装 FFmpeg：
 
-还需要 FFmpeg（音频读写依赖）：
+```bash
+conda install ffmpeg
+```
+
+Ubuntu 也可以使用系统包：
+
+```bash
+sudo apt install ffmpeg libsox-dev
+```
+
+macOS 也可以使用 Homebrew：
+
+```bash
+brew install ffmpeg
+```
+
+## 第 3 步：确认底模文件存在
+
+零样本推理必须有底模。安装成功后，重点确认这些目录存在：
+
+```text
+GPT_SoVITS/pretrained_models/
+GPT_SoVITS/text/G2PWModel/
+```
+
+常用 v2Pro 底模路径是：
+
+```text
+GPT_SoVITS/pretrained_models/s1v3.ckpt
+GPT_SoVITS/pretrained_models/v2Pro/s2Gv2Pro.pth
+```
+
+如果安装脚本没有下载成功，需要手动补齐：
+
+| 模型 | 放置位置 |
+| --- | --- |
+| GPT / SoVITS 主底模 | `GPT_SoVITS/pretrained_models/` |
+| 中文 G2PW 模型 | 解压并命名为 `G2PWModel`，放到 `GPT_SoVITS/text/` |
+
+中文合成缺少 `G2PWModel` 时，通常会在文本前端或注音阶段报错。
+
+## 第 4 步：启动推理 WebUI
+
+最短路径是直接启动推理页：
 
 ```bash
 conda activate GPTSoVits
-conda install ffmpeg          # 最省事，跨平台
-# 或 Ubuntu: sudo apt install ffmpeg libsox-dev
-# 或 macOS:  brew install ffmpeg
+python GPT_SoVITS/inference_webui.py zh_CN
 ```
 
-## 第 3 步（可选）：手动补底模
+启动成功后，推理页默认监听 `9872`。
 
-**只有 `install.sh` 没成功下载模型时才需要这步。** 底模是零样本推理的必需品，缺了无法合成。
-
-- 主底模 → 放到 `GPT_SoVITS/pretrained_models/`（GPT `s1*.ckpt` + SoVITS `s2G*.pth`）。
-- G2PW 中文注音模型 → 解压重命名为 `G2PWModel`，放到 `GPT_SoVITS/text/`（**仅中文 TTS 需要**）。
-
-下载地址与各版本文件清单见 [README 的 Pretrained Models 章节](../README.md#pretrained-models)。默认版本是 `v2Pro`，对应底模 `v2Pro/s2Gv2Pro.pth` 与 `s1v3.ckpt`。
-
-## 第 4 步：启动 WebUI
+如果你更想从总控页进入：
 
 ```bash
-python webui.py           # 可选追加语言，如 python webui.py zh_CN
+conda activate GPTSoVits
+python webui.py zh_CN
 ```
 
-启动后浏览器访问总控 WebUI（默认端口 **9874**）。各端口一览：
+浏览器打开：
 
 ```text
-9874  总控 WebUI（webui.py）——数据处理 / 训练 / 推理的入口
-9872  推理 WebUI            ——本文要用的
-9873  UVR5 人声分离（可选）
-9871  打标校对（可选）
-9880  API 服务（见文末）
+http://127.0.0.1:9874/
 ```
 
-在总控 WebUI 里进入 `1-GPT-SoVITS-TTS` → `1C-inference`，点击开启推理 WebUI，页面会打到 9872 端口。
-
-> 也可以直接起推理页：`python GPT_SoVITS/inference_webui.py`
-
-## 第 5 步：跑通第一条零样本合成
-
-在推理 WebUI 里，按顺序做四件事：
+然后进入：
 
 ```text
-1. 选模型      —— GPT 权重选底模，SoVITS 权重选底模（如 v2Pro 底模）
-2. 传参考音频   —— 一段 5~10 秒的清晰人声（这段决定音色）
-3. 填参考文本   —— 参考音频对应的文字 + 它的语言
-4. 填目标文本   —— 你想合成的文字 + 它的语言，点击合成
+1-GPT-SoVITS-TTS -> 1C-推理 -> 开启 TTS 推理 WebUI
 ```
 
-几秒后即可试听 / 下载。听到声音，说明整条链路已经跑通。
+再打开：
 
-> **参考音频时长必须在 3~10 秒之间**，这是代码里的硬约束（超出会报错）。想让音色更像，选一段干净、无背景音、语气自然的样本。
+```text
+http://127.0.0.1:9872/
+```
 
-## 常见问题排查
+常用端口：
 
-按"卡在哪一步"对号入座：
+| 端口 | 用途 | 本文是否必需 |
+| --- | --- | --- |
+| `9872` | 推理 WebUI | 必需 |
+| `9874` | 总控 WebUI | 可选 |
+| `9873` | UVR5 人声分离 | 不需要 |
+| `9871` | 标注校对 WebUI | 不需要 |
 
-- 启动即报模型缺失 → 回第 3 步补底模，确认路径在 `GPT_SoVITS/pretrained_models/`。
-- 中文合成报注音相关错误 → 缺 `G2PWModel`，见第 3 步。
-- 参考音频报时长错误 → 裁到 3~10 秒。
-- 显存不足 / N 卡老旧 → 用 CPU 或半精度；`config.py` 会自动探测设备与精度。
-- Mac 上音质偏低 → 已知现象，Mac 训练/推理建议用 CPU（见 [README 的 macOS 说明](../README.md#macos)）。
+## 第 5 步：准备一段参考音频
 
-## 下一步
+准备一段清晰人声：
 
-跑通零样本后，按需求选方向：
+```text
+时长：3~10 秒
+内容：最好是一整句自然说话
+质量：单人声、无背景音乐、无明显噪声、不要多人混说
+格式：wav / mp3 等常见音频格式均可，wav 更稳
+```
 
-- **想要更像的专属音色（微调）**：跟着 [声音克隆端到端教程](voice-cloning-tutorial.md) 走一遍——它以"克隆一个具体角色的声音"为贯穿案例，覆盖素材准备、切分/ASR/打标、训练集格式化、训练 GPT/SoVITS、用微调模型推理的每一步与产物。想先看背后的流水线原理，见 [项目讲解 · 训练流水线](architecture.md#四微调训练流水线)。
-- **接入程序（API）**：`python api_v2.py`（v2，配置 `GPT_SoVITS/configs/tts_infer.yaml`）或 `python api.py`（v1），默认端口 9880。
-- **命令行合成（CLI）**：`GPT_SoVITS/inference_cli.py`，用参数指定 GPT / SoVITS 权重、参考音频、目标文本。
-- **看懂内部原理、准备二次开发**：读 [项目讲解](architecture.md)。
+同时写下这段参考音频里说的原文。第一次跑通不要开启“无参考文本模式”，直接填准确参考文本，排错成本最低。
+
+示例：
+
+```text
+参考音频：ref.wav
+参考文本：今天的天气不错，我们出去走走吧。
+参考语种：中文
+```
+
+## 第 6 步：在网页里合成第一条语音
+
+打开：
+
+```text
+http://127.0.0.1:9872/
+```
+
+页面语言可能显示中文，也可能显示英文。按下面顺序填写：
+
+| 顺序 | 中文字段 | 英文字段 | 第一次建议 |
+| --- | --- | --- | --- |
+| 1 | `GPT模型列表` | `GPT weight list` | 选择底模，例如 `不训练直接推v3底模` / `Use v3 base model directly without training` |
+| 2 | `SoVITS模型列表` | `SoVITS weight list` | 选择底模，例如 `不训练直接推v2Pro底模` / `Use v2Pro base model directly without training` |
+| 3 | `请上传3~10秒内参考音频` | `Please upload a reference audio within the 3-10 second range` | 上传第 5 步准备的音频 |
+| 4 | `参考音频的文本` | `Text for reference audio` | 填参考音频逐字对应文本 |
+| 5 | `参考音频的语种` | `Language for reference audio` | 中文音频选 `中文` / `Chinese` |
+| 6 | `需要合成的文本` | `Inference text` | 填你想合成的新文本 |
+| 7 | `需要合成的语种` | `Inference text language` | 中文目标文本选 `中文` / `Chinese` |
+| 8 | `怎么切` | `How to slice the sentence` | 第一次保持默认 |
+| 9 | `top_k` / `top_p` / `temperature` | 同名 | 第一次保持默认 |
+| 10 | `合成语音` | `Start inference` | 点击生成 |
+
+不要在第一次测试时同时调整采样参数、语速、句间停顿和多参考音频。先用默认参数合成一条，确认链路可用。
+
+## 第 7 步：判断是否跑通
+
+满足下面三点就算完成快速上手：
+
+```text
+1. 页面没有报“模型缺失”或“参考音频时长超出范围”
+2. 输出区域出现可播放音频
+3. 音频内容是你的目标文本，音色接近参考音频
+```
+
+零样本第一次的目标是“听到可用声音”，不是追求最像。想更像，通常需要更干净的参考音频，或者进入少样本微调流程。
+
+## 常见问题
+
+### 浏览器打不开 `9872`
+
+先确认服务是否启动。远程服务器场景下，确认本地 SSH 端口转发包含 `9872`：
+
+```bash
+ssh -N -L 9872:localhost:9872 <user>@<server-ip>
+```
+
+浏览器访问 `http://127.0.0.1:9872/`，不要依赖 `http://0.0.0.0:9872/`。
+
+### 提示参考音频超出范围
+
+推理页要求参考音频在 3~10 秒内。重新裁剪参考音频，保留一句完整、清晰、自然的话。
+
+### 提示没有上传参考音频
+
+必须上传左侧单个参考音频。多参考音频上传是可选项，第一次不用。
+
+### 中文文本报错
+
+检查 `GPT_SoVITS/text/G2PWModel/` 是否存在。中文 TTS 需要这个模型做注音相关处理。
+
+### 权重列表里没有你想选的模型
+
+点击页面上的 `刷新模型路径` / `refreshing model paths`。底模应位于 `GPT_SoVITS/pretrained_models/`，微调权重应位于对应的 `GPT_weights*` 和 `SoVITS_weights*` 目录。
+
+### 显存不足
+
+快速上手可以先用 CPU 或更小显存压力的底模跑通。推理速度会慢，但能验证安装和页面流程。
+
+## 完成后你可以做什么
+
+你已经跑通了零样本推理链路。接下来通常有三种方向：
+
+```text
+想更像、更稳定 -> 做少样本微调
+想接入程序     -> 启动 API 服务
+想批量生成     -> 使用 CLI 或自行封装推理调用
+```
