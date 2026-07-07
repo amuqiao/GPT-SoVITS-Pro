@@ -47,6 +47,8 @@ Python 3.10  +  PyTorch 2.5.1  +  Apple silicon（Mac 用 MPS 或 CPU）
 ```
 
 > Windows 用户可选更省事的路径：下载官方**整合包**，双击 `go-webui.bat` 即可，跳过下面的安装步骤。整合包地址见 [README](../README.md#windows)。
+>
+> 部署到国内 GPU 开发服务器（HuggingFace 不通、系统盘小、多人共用）？先看 [开发服务器环境搭建](dev-server-setup.md)——镜像源、磁盘布局、选卡这些服务器特有约束本文不展开。
 
 ## 第 2 步：安装
 

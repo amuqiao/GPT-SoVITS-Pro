@@ -12,6 +12,7 @@
 - [声音克隆端到端教程](docs/voice-cloning-tutorial.md)：以克隆具体角色声音为案例，零样本速成 + 少样本微调完整流程。
 - [项目讲解](docs/architecture.md)：双模型架构心智模型、端到端数据流、训练/推理对应关系，面向二次开发。
 - [项目地图](docs/project-map.md)：入口、目录职责、优先阅读路径速查。
+- [开发服务器环境搭建](docs/dev-server-setup.md)：国内 GPU 服务器（HF 不通、系统盘小、多人共用）的部署 runbook。
 
 ## Git 规则
 
