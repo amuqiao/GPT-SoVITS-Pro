@@ -10,7 +10,9 @@
 
 - [快速上手](docs/quickstart.md)：安装、下载模型、跑通第一条零样本合成。
 - [声音克隆端到端教程](docs/voice-cloning-tutorial.md)：以克隆具体角色声音为案例，零样本速成 + 少样本微调完整流程。
+- [场景化工作流](docs/scenario-workflows.md)：按使用场景和黑盒模块说明零样本、少样本训练、已有权重推理和关键输入输出。
 - [项目讲解](docs/architecture.md)：双模型架构心智模型、端到端数据流、训练/推理对应关系，面向二次开发。
+- [工作流内部机制](docs/workflow-internals.md)：按输入/处理/输出拆解零样本推理和少样本微调流水线，面向脚本化学习。
 - [项目地图](docs/project-map.md)：入口、目录职责、优先阅读路径速查。
 
 ## Git 规则
